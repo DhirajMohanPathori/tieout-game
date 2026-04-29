@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Tieout — Audit Chaos Catcher</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body {
+    background:#060e1e;
+    font-family:'DM Sans',sans-serif;
+    overflow:hidden;
+    height:100vh;
+    width:100vw;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  canvas { display:block; touch-action:none; cursor:none; }
+
+  /* ── OVERLAY SCREENS ── */
+  .screen {
+    position:fixed; inset:0;
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    background:linear-gradient(160deg,#060e1e 0%,#0a1628 60%,#0d1e38 100%);
+    z-index:10;
+    padding:24px;
+  }
+  .screen.hidden { display:none; }
+
+  .logo-tag {
+    font-family:'DM Mono',monospace;
+    font-size:11px;
+    letter-spacing:0.18em;
+    color:#378add;
+    text-transform:uppercase;
+    margin-bottom:16px;
+  }
+  h1.game-title {
+    font-size:clamp(32px,5vw,56px);
+    font-weight:300;
+    color:#fff;
+    letter-spacing:-0.02em;
+    text-align:center;
+    line-height:1.1;
+    margin-bottom:10px;
+  }
+  .subtitle {
+    font-size:15px;
+    color:rgba(255,255,255,0.4);
+    text-align:center;
+    max-width:420px;
+    line-height:1.7;
+    margin-bottom:32px;
+  }
+
+  /* Legend */
+  .legend {
+    display:flex;
+    gap:12px;
+    flex-wrap:wrap;
+    justify-content:center;
+    margin-bottom:32px;
+  }
+  .legend-item {
+    display:flex;
+    align-items:center;
+    gap:8px;
+    background:rgba(255,255,255,0.05);
+    border:0.5px solid rgba(255,255,255,0.1);
+    border-radius:8px;
+    padding:8px 14px;
+    font-size:13px;
+    color:rgba(255,255,255,0.65);
+  }
+  .legend-dot {
+    width:28px; height:36px;
+    border-radius:3px;
+    flex-shrink:0;
+  }
+  .legend-catch { color:#5dcaa5; font-size:11px; font-weight:500; }
+  .legend-dodge { color:#f09595; font-size:11px; font-weight:500; }
+
+  /* Buttons */
+  .btn-primary {
+    background:#185fa5;
+    border:1px solid #378add;
+    color:#fff;
+    font-family:'DM Sans',sans-serif;
+    font-size:16px;
+    font-weight:500;
+    padding:14px 44px;
+    border-radius:10px;
+    cursor:pointer;
+    transition:background 0.15s, transform 0.1s;
+    margin-bottom:12px;
+  }
+  .btn-primary:hover { background:#378add; }
+  .btn-primary:active { transform:scale(0.97); }
+  .btn-secondary {
+    background:transparent;
+    border:0.5px solid rgba(255,255,255,0.15);
+    color:rgba(255,255,255,0.5);
+    font-family:'DM Sans',sans-serif;
+    font-size:14px;
+    padding:10px 28px;
+    border-radius:8px;
+    cursor:pointer;
+    transition:border-color 0.15s, color 0.15s;
+  }
+  .btn-secondary:hover { border-color:rgba(255,255,255,0.35); color:rgba(255,255,255,0.8); }
+
+  /* Register */
+  .input-group { width:100%; max-width:380px; margin-bottom:14px; }
+  .input-group label { font-size:12px; color:rgba(255,255,255,0.4); letter-spacing:0.08em; text-transform:uppercase; display:block; margin-bottom:6px; }
+  .input-group input {
+    width:100%;
+    background:rgba(255,255,255,0.06);
+    border:1px solid rgba(255,255,255,0.12);
+    border-radius:8px;
+    padding:12px 16px;
+    font-family:'DM Sans',sans-serif;
+    font-size:16px;
+    color:#fff;
+    outline:none;
+    transition:border-color 0.15s;
+  }
+  .input-group input:focus { border-color:#378add; }
+  .input-group input::placeholder { color:rgba(255,255,255,0.25); }
+
+  /* HUD */
+  #hud {
+    position:fixed; top:0; left:0; right:0;
+    display:flex; justify-content:space-between; align-items:center;
+    padding:14px 20px 0;
+    z-index:5;
+    pointer-events:none;
+  }
+  .hud-box {
+    background:rgba(10,22,40,0.85);
+    border:0.5px solid rgba(55,138,221,0.2);
+    border-radius:8px;
+    padding:8px 16px;
+    min-width:90px;
+    text-align:center;
+  }
+  .hud-label { font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:rgba(255,255,255,0.35); }
+  .hud-value { font-size:22px; font-weight:500; color:#fff; font-family:'DM Mono',monospace; line-height:1.2; }
+  .hud-value.danger { color:#f09595; }
+  #timer-bar-wrap {
+    position:fixed; top:66px; left:16px; right:16px;
+    height:3px; background:rgba(255,255,255,0.08); border-radius:2px;
+    z-index:5; pointer-events:none;
+  }
+  #timer-bar { height:100%; border-radius:2px; transition:width 0.9s linear, background 0.5s; }
+
+  /* Combo */
+  #combo-text {
+    position:fixed; top:84px; left:50%; transform:translateX(-50%);
+    font-size:16px; font-weight:500; color:#5dcaa5;
+    font-family:'DM Mono',monospace;
+    pointer-events:none; z-index:6;
+    opacity:0; transition:opacity 0.2s;
+    white-space:nowrap;
+  }
+  #speed-warn {
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+    font-size:13px; color:#f09595; letter-spacing:0.12em;
+    font-family:'DM Mono',monospace;
+    pointer-events:none; z-index:6;
+    opacity:0;
+  }
+
+  /* Result */
+  .result-card {
+    background:rgba(255,255,255,0.04);
+    border:0.5px solid rgba(255,255,255,0.1);
+    border-radius:16px;
+    padding:28px 40px;
+    display:flex;
+    gap:40px;
+    margin:24px 0;
+    flex-wrap:wrap;
+    justify-content:center;
+  }
+  .result-stat { text-align:center; }
+  .result-stat .val { font-size:36px; font-weight:500; font-family:'DM Mono',monospace; }
+  .result-stat .lbl { font-size:12px; color:rgba(255,255,255,0.4); margin-top:2px; }
+  .result-punchline {
+    font-size:15px; color:rgba(255,255,255,0.5);
+    text-align:center; max-width:440px; line-height:1.7; margin-bottom:8px;
+  }
+  .result-punchline strong { color:#fff; font-weight:400; }
+  .result-tieout { font-size:12px; color:#378add; font-family:'DM Mono',monospace; letter-spacing:0.1em; margin-bottom:28px; }
+  .btn-row { display:flex; gap:12px; flex-wrap:wrap; justify-content:center; }
+
+  /* Leaderboard */
+  .lb-table { width:100%; max-width:700px; border-collapse:collapse; }
+  .lb-table th {
+    font-size:10px; letter-spacing:0.12em; text-transform:uppercase;
+    color:rgba(255,255,255,0.3); padding:8px 12px; text-align:left;
+    border-bottom:0.5px solid rgba(255,255,255,0.08);
+  }
+  .lb-table td { padding:10px 12px; font-size:14px; color:rgba(255,255,255,0.8); }
+  .lb-row-1 { background:rgba(255,200,50,0.06); }
+  .lb-row-2 { background:rgba(192,200,215,0.04); }
+  .lb-row-3 { background:rgba(180,120,60,0.05); }
+  .lb-row-even { background:rgba(255,255,255,0.02); }
+  .lb-name-1 { color:#ffc832; font-weight:500; }
+  .lb-name-2 { color:#c0c8d7; font-weight:500; }
+  .lb-name-3 { color:#b4783c; font-weight:500; }
+  .lb-score { font-family:'DM Mono',monospace; font-weight:500; color:#fff; }
+  .lb-caught { color:#5dcaa5; font-family:'DM Mono',monospace; }
+  .lb-combo { color:#efb827; font-family:'DM Mono',monospace; }
+  .loading-text { color:rgba(255,255,255,0.3); font-size:14px; margin:32px 0; }
+  .lb-scroll { max-height:480px; overflow-y:auto; width:100%; max-width:700px; }
+  .lb-scroll::-webkit-scrollbar { width:4px; }
+  .lb-scroll::-webkit-scrollbar-track { background:transparent; }
+  .lb-scroll::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.1); border-radius:2px; }
+</style>
+</head>
+<body>
+
+<!-- CANVAS -->
+<canvas id="gameCanvas"></canvas>
+
+<!-- HUD (shown during game) -->
+<div id="hud" style="display:none;">
+  <div class="hud-box"><div class="hud-label">Score</div><div class="hud-value" id="hud-score">0</div></div>
+  <div class="hud-box"><div class="hud-label">Time</div><div class="hud-value" id="hud-timer">30</div></div>
+  <div class="hud-box"><div class="hud-label">Caught</div><div class="hud-value" id="hud-caught">0</div></div>
+</div>
+<div id="timer-bar-wrap" style="display:none;"><div id="timer-bar"></div></div>
+<div id="combo-text"></div>
+<div id="speed-warn">⚡ SPEED UP</div>
+
+<!-- SCREEN: INTRO -->
+<div class="screen" id="screen-intro">
+  <div class="logo-tag">Tieout · AICPA EBP Conference</div>
+  <h1 class="game-title">Audit Chaos<br>Catcher</h1>
+  <p class="subtitle">EBP audit season is here. Catch clean data, dodge the exceptions. 30 seconds on the clock.</p>
+  <div class="legend">
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#14376e;border:1px solid #3770c8;"></div>
+      <div><div>Plan Doc / Census</div><div class="legend-catch">CATCH</div></div>
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#696460;border:1px solid #484441;"></div>
+      <div><div>Exception Stone</div><div class="legend-dodge">DODGE</div></div>
+    </div>
+  </div>
+  <button class="btn-primary" onclick="showRegister()">Start Game</button>
+  <button class="btn-secondary" onclick="showLeaderboard()">Leaderboard</button>
+</div>
+
+<!-- SCREEN: REGISTER -->
+<div class="screen hidden" id="screen-register">
+  <div class="logo-tag">Who's playing?</div>
+  <h1 class="game-title" style="font-size:32px;margin-bottom:8px;">Enter your details</h1>
+  <p class="subtitle" style="margin-bottom:24px;">Your score will appear on the leaderboard</p>
+  <div class="input-group">
+    <label>Your Name</label>
+    <input type="text" id="input-name" placeholder="e.g. Sarah Chen" maxlength="30" autocomplete="off">
+  </div>
+  <div class="input-group">
+    <label>Firm</label>
+    <input type="text" id="input-firm" placeholder="e.g. Grant Thornton" maxlength="30" autocomplete="off">
+  </div>
+  <button class="btn-primary" style="margin-top:10px;" onclick="startGame()">Let's Go!</button>
+  <button class="btn-secondary" style="margin-top:4px;" onclick="showScreen('screen-intro')">Back</button>
+</div>
+
+<!-- SCREEN: RESULT -->
+<div class="screen hidden" id="screen-result">
+  <div class="logo-tag">Audit Complete</div>
+  <h1 class="game-title" style="font-size:40px;margin-bottom:4px;">Time's up!</h1>
+  <div class="result-card">
+    <div class="result-stat"><div class="val" id="res-score" style="color:#fff;">0</div><div class="lbl">Score</div></div>
+    <div class="result-stat"><div class="val" id="res-caught" style="color:#5dcaa5;">0</div><div class="lbl">Files caught</div></div>
+    <div class="result-stat"><div class="val" id="res-exc" style="color:#f09595;">0</div><div class="lbl">Exceptions hit</div></div>
+    <div class="result-stat"><div class="val" id="res-combo" style="color:#efb827;">0x</div><div class="lbl">Best streak</div></div>
+  </div>
+  <p class="result-punchline">In real life, Tieout handles all of this automatically —<br><strong>100% testing, zero manual chasing.</strong></p>
+  <p class="result-tieout">tieout.ai · AI-native EBP audit platform</p>
+  <div class="btn-row">
+    <button class="btn-primary" onclick="showRegister()">Play Again</button>
+    <button class="btn-secondary" onclick="showLeaderboard()">Leaderboard</button>
+  </div>
+</div>
+
+<!-- SCREEN: LEADERBOARD -->
+<div class="screen hidden" id="screen-leaderboard">
+  <div class="logo-tag">Tieout · Booth Leaderboard</div>
+  <h1 class="game-title" style="font-size:36px;margin-bottom:4px;">Top Auditors</h1>
+  <p class="subtitle" style="margin-bottom:20px;">Who survived audit chaos the best?</p>
+  <div class="lb-scroll">
+    <div id="lb-content"><p class="loading-text">Loading scores...</p></div>
+  </div>
+  <div class="btn-row" style="margin-top:20px;">
+    <button class="btn-secondary" onclick="showScreen('screen-intro')">← Back</button>
+    <button class="btn-secondary" onclick="loadLeaderboard()">↻ Refresh</button>
+  </div>
+</div>
+
+<script>
+// ── CONFIG ──────────────────────────────────────────────────────────────────
+const SHEETS_URL = "https://script.google.com/macros/s/AKfycbweZlPvHjoTGsDe_vqa1Fk9GZJZbQaA1ibnLS0oZmZvv-cCwtvIhWxg8IKH3MHhnuqy/exec";
+const GAME_DURATION = 30;
+
+// ── CANVAS SETUP ─────────────────────────────────────────────────────────────
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+let W, H;
+function resizeCanvas() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// ── GAME STATE ───────────────────────────────────────────────────────────────
+let gameActive = false;
+let score = 0, caught = 0, exceptionsHit = 0, combo = 0, maxCombo = 0;
+let timeLeft = GAME_DURATION;
+let spawnTimer = 0, timerInterval;
+let items = [], particles = [], floatTexts = [];
+let cursorX = W / 2, cursorY = H / 2;
+let playerName = '', playerFirm = '';
+let comboTimeout, speedWarnInterval;
+let lastTime = 0;
+
+// ── ITEM DEFINITIONS ─────────────────────────────────────────────────────────
+const GOOD_DOCS = [
+  { label:'PLAN DOC',  sub:'Plan Document',      color:'#14376e', border:'#3770c8', icon:'doc'   },
+  { label:'CENSUS',    sub:'Census File',         color:'#084b3a', border:'#1d9e75', icon:'table' },
+  { label:'PAYROLL',   sub:'Payroll Data',        color:'#37196e', border:'#7840c8', icon:'doc'   },
+  { label:'TRUST',     sub:'Trust Statement',     color:'#143e5f', border:'#378add', icon:'sheet' },
+  { label:'AMENDMENT', sub:'Plan Amendment',      color:'#124630', border:'#32aa64', icon:'doc'   },
+  { label:'SPD',       sub:'Summary Plan Desc',   color:'#501e3c', border:'#b44682', icon:'sheet' },
+  { label:'ADOPTION',  sub:'Adoption Agreement',  color:'#193c50', border:'#3296c8', icon:'doc'   },
+];
+const BAD_ITEMS = [
+  { label:'MISSING SSN',  penalty:15 },
+  { label:'INELIGIBLE',   penalty:15 },
+  { label:'DUPE ENTRY',   penalty:15 },
+  { label:'BAD DATA',     penalty:15 },
+  { label:'NO VESTING',   penalty:15 },
+];
+
+// ── DOCUMENT OBJECT ───────────────────────────────────────────────────────────
+class DocItem {
+  constructor() {
+    this.w = 76; this.h = 96;
+    this.x = Math.random() * (W - this.w - 40) + 20;
+    this.y = -this.h - Math.random() * 40;
+    this.vy = 0;
+    this.vx = (Math.random() - 0.5) * 0.6;
+    this.rotation = (Math.random() - 0.5) * 0.28;
+    this.rotSpeed = (Math.random() - 0.5) * 0.008;
+    this.wobble = Math.random() * Math.PI * 2;
+    this.wobbleSpeed = (Math.random() - 0.5) * 0.04;
+    this.alpha = 1;
+    this.dying = false;
+    this.dieProgress = 0;
+
+    this.bad = Math.random() < 0.33;
+    if (this.bad) {
+      this.data = BAD_ITEMS[Math.floor(Math.random() * BAD_ITEMS.length)];
+      // Pre-generate stone shape
+      this.stonePoints = this._genStonePoints();
+      this.cracks = this._genCracks();
+    } else {
+      this.data = GOOD_DOCS[Math.floor(Math.random() * GOOD_DOCS.length)];
+    }
+  }
+
+  _genStonePoints() {
+    const pts = [];
+    const n = 9;
+    for (let i = 0; i < n; i++) {
+      const angle = (2 * Math.PI / n) * i + (Math.random() - 0.5) * 0.3;
+      const r = 28 + Math.random() * 8;
+      pts.push({ x: Math.cos(angle) * r, y: Math.sin(angle) * r });
+    }
+    return pts;
+  }
+
+  _genCracks() {
+    const cracks = [];
+    for (let i = 0; i < 3; i++) {
+      cracks.push({
+        x1: (Math.random() - 0.5) * 24, y1: (Math.random() - 0.5) * 24,
+        x2: (Math.random() - 0.5) * 24, y2: (Math.random() - 0.5) * 24,
+      });
+    }
+    return cracks;
+  }
+
+  update(dt) {
+    if (this.dying) {
+      this.dieProgress += dt * 4;
+      this.alpha = Math.max(0, 1 - this.dieProgress);
+      return;
+    }
+    this.wobble += this.wobbleSpeed;
+    this.x += Math.sin(this.wobble) * 0.5 + this.vx;
+    this.y += this.vy;
+    this.rotation += this.rotSpeed;
+  }
+
+  isDead() { return this.dying && this.dieProgress >= 1; }
+  offScreen() { return this.y > H + this.h + 10; }
+  getCX() { return this.x + this.w / 2; }
+  getCY() { return this.y + this.h / 2; }
+
+  draw() {
+    if (this.alpha <= 0) return;
+    ctx.save();
+    ctx.globalAlpha = this.alpha;
+    ctx.translate(this.getCX(), this.getCY());
+    ctx.rotate(this.rotation);
+
+    if (this.bad) {
+      this._drawStone();
+    } else {
+      this._drawDocument();
+    }
+    ctx.restore();
+  }
+
+  _drawDocument() {
+    const w = this.w, h = this.h;
+    const hw = w / 2, hh = h / 2;
+    const d = this.data;
+    const fold = 14;
+
+    // Shadow
+    ctx.shadowColor = 'rgba(0,0,0,0.4)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetY = 4;
+
+    // Body
+    ctx.fillStyle = d.color;
+    ctx.beginPath();
+    ctx.moveTo(-hw, -hh);
+    ctx.lineTo(hw - fold, -hh);
+    ctx.lineTo(hw, -hh + fold);
+    ctx.lineTo(hw, hh);
+    ctx.lineTo(-hw, hh);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+
+    // Border
+    ctx.strokeStyle = d.border;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Folded corner
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.moveTo(hw - fold, -hh);
+    ctx.lineTo(hw, -hh + fold);
+    ctx.lineTo(hw - fold, -hh + fold);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = d.border;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(hw - fold, -hh);
+    ctx.lineTo(hw - fold, -hh + fold);
+    ctx.lineTo(hw, -hh + fold);
+    ctx.stroke();
+
+    // Header bar
+    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+    ctx.fillRect(-hw, -hh, w - fold, 26);
+    ctx.strokeStyle = d.border;
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(-hw, -hh + 26);
+    ctx.lineTo(hw, -hh + 26);
+    ctx.stroke();
+
+    // Icon in header
+    ctx.strokeStyle = d.border;
+    ctx.lineWidth = 1.5;
+    const ix = -hw + 9, iy = -hh + 8;
+    if (d.icon === 'doc') {
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath();
+        ctx.moveTo(ix, iy + i * 5);
+        ctx.lineTo(ix + 14, iy + i * 5);
+        ctx.stroke();
+      }
+    } else if (d.icon === 'table') {
+      ctx.strokeRect(ix, iy, 14, 10);
+      ctx.beginPath(); ctx.moveTo(ix + 7, iy); ctx.lineTo(ix + 7, iy + 10); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(ix, iy + 5); ctx.lineTo(ix + 14, iy + 5); ctx.stroke();
+    } else {
+      ctx.strokeRect(ix, iy, 14, 10);
+      ctx.beginPath(); ctx.moveTo(ix + 5, iy); ctx.lineTo(ix + 5, iy + 10); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(ix, iy + 5); ctx.lineTo(ix + 14, iy + 5); ctx.stroke();
+    }
+
+    // Content lines
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    const lineY = [-hh + 34, -hh + 44, -hh + 54, -hh + 64];
+    const lineW = [w - 18, w - 22, w - 14, w - 30];
+    for (let i = 0; i < 4; i++) {
+      ctx.fillRect(-hw + 8, lineY[i], lineW[i], 3);
+    }
+
+    // Label
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.font = '500 9px DM Mono, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(d.label, 0, hh - 18);
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.font = '8px DM Sans, sans-serif';
+    ctx.fillText(d.sub, 0, hh - 8);
+  }
+
+  _drawStone() {
+    const pts = this.stonePoints;
+
+    // Shadow
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = 10;
+    ctx.shadowOffsetY = 5;
+
+    // Main shape
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.closePath();
+
+    // Stone gradient fill
+    const grad = ctx.createRadialGradient(-8, -8, 2, 0, 0, 36);
+    grad.addColorStop(0, '#9a938b');
+    grad.addColorStop(0.5, '#696460');
+    grad.addColorStop(1, '#3a3835');
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+
+    ctx.strokeStyle = '#2e2c2a';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Cracks
+    ctx.strokeStyle = '#383330';
+    ctx.lineWidth = 1;
+    for (const c of this.cracks) {
+      ctx.beginPath();
+      ctx.moveTo(c.x1, c.y1);
+      ctx.lineTo(c.x2, c.y2);
+      ctx.stroke();
+    }
+
+    // Highlight
+    ctx.fillStyle = 'rgba(200,190,180,0.18)';
+    ctx.beginPath();
+    ctx.ellipse(-10, -12, 10, 6, -0.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Warning triangle
+    ctx.fillStyle = '#efb827';
+    ctx.beginPath();
+    ctx.moveTo(0, -13);
+    ctx.lineTo(-10, 7);
+    ctx.lineTo(10, 7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#2e2c2a';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // ! mark
+    ctx.fillStyle = '#2e2c2a';
+    ctx.fillRect(-1.5, -8, 3, 8);
+    ctx.fillRect(-1.5, 2, 3, 3);
+
+    // Label below
+    ctx.fillStyle = 'rgba(220,180,150,0.85)';
+    ctx.font = '500 8px DM Mono, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(this.data.label, 0, 22);
+  }
+}
+
+// ── PARTICLE ─────────────────────────────────────────────────────────────────
+class Particle {
+  constructor(x, y, good) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 2.5 + Math.random() * 4;
+    this.x = x; this.y = y;
+    this.vx = Math.cos(angle) * speed;
+    this.vy = Math.sin(angle) * speed;
+    this.alpha = 1;
+    this.size = 3 + Math.random() * 5;
+    const goodColors = ['#1d9e75','#5dcaa5','#378add'];
+    const badColors  = ['#e24b4a','#f09595','#efb827'];
+    this.color = (good ? goodColors : badColors)[Math.floor(Math.random() * 3)];
+  }
+  update(dt) {
+    this.x += this.vx; this.y += this.vy;
+    this.vy += 0.25;
+    this.alpha = Math.max(0, this.alpha - 0.05);
+  }
+  isDead() { return this.alpha <= 0; }
+  draw() {
+    ctx.save();
+    ctx.globalAlpha = this.alpha;
+    ctx.fillStyle = this.color;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ── FLOAT TEXT ────────────────────────────────────────────────────────────────
+class FloatText {
+  constructor(x, y, text, color) {
+    this.x = x; this.y = y;
+    this.text = text; this.color = color;
+    this.alpha = 1; this.vy = -1.8;
+  }
+  update() { this.y += this.vy; this.vy *= 0.96; this.alpha = Math.max(0, this.alpha - 0.04); }
+  isDead() { return this.alpha <= 0; }
+  draw() {
+    ctx.save();
+    ctx.globalAlpha = this.alpha;
+    ctx.fillStyle = this.color;
+    ctx.font = '500 15px DM Mono, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(this.text, this.x, this.y);
+    ctx.restore();
+  }
+}
+
+// ── BACKGROUND STARS ─────────────────────────────────────────────────────────
+const stars = Array.from({length:70}, () => ({
+  x: Math.random() * 1920, y: Math.random() * 1080,
+  r: Math.random() * 1.5 + 0.3, speed: Math.random() * 0.8 + 0.2
+}));
+
+function drawBg() {
+  ctx.clearRect(0, 0, W, H);
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#060e1e');
+  grad.addColorStop(1, '#0d1e38');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  const t = Date.now() / 1000;
+  for (const s of stars) {
+    const alpha = 0.3 + 0.25 * Math.sin(t * s.speed + s.x);
+    ctx.fillStyle = `rgba(255,255,255,${alpha.toFixed(2)})`;
+    ctx.beginPath();
+    ctx.arc(s.x % W, s.y % H, s.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawCursor() {
+  ctx.save();
+  ctx.strokeStyle = '#378add';
+  ctx.lineWidth = 2;
+  ctx.globalAlpha = 0.85;
+  ctx.beginPath();
+  ctx.arc(cursorX, cursorY, 28, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = '#378add';
+  ctx.globalAlpha = 1;
+  ctx.beginPath();
+  ctx.arc(cursorX, cursorY, 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// ── SPAWN ─────────────────────────────────────────────────────────────────────
+function spawnItem() {
+  const elapsed = GAME_DURATION - timeLeft;
+  const item = new DocItem();
+  item.vy = 2.2 + (elapsed / GAME_DURATION) * 5.5 + Math.random() * 0.8;
+  items.push(item);
+}
+
+// ── COLLISION ─────────────────────────────────────────────────────────────────
+function checkCollisions() {
+  for (const item of items) {
+    if (item.dying) continue;
+    const dx = cursorX - item.getCX();
+    const dy = cursorY - item.getCY();
+    if (Math.sqrt(dx * dx + dy * dy) < 38) {
+      item.dying = true;
+      if (item.bad) {
+        score = Math.max(0, score - item.data.penalty);
+        exceptionsHit++;
+        combo = 0;
+        for (let i = 0; i < 10; i++) particles.push(new Particle(item.getCX(), item.getCY(), false));
+        floatTexts.push(new FloatText(item.getCX(), item.getCY() - 20, `-${item.data.penalty}`, '#f09595'));
+      } else {
+        combo++;
+        maxCombo = Math.max(maxCombo, combo);
+        const pts = 10 + (combo >= 3 ? combo * 5 : 0);
+        score += pts;
+        caught++;
+        for (let i = 0; i < 8; i++) particles.push(new Particle(item.getCX(), item.getCY(), true));
+        const txt = `+${pts}` + (combo >= 3 ? `  ×${combo}!` : '');
+        floatTexts.push(new FloatText(item.getCX(), item.getCY() - 20, txt, '#5dcaa5'));
+        if (combo >= 3) showCombo(`×${combo} STREAK!`);
+      }
+      updateHUD();
+    }
+  }
+}
+
+function updateHUD() {
+  document.getElementById('hud-score').textContent = score;
+  document.getElementById('hud-caught').textContent = caught;
+  const tv = document.getElementById('hud-timer');
+  tv.textContent = timeLeft;
+  tv.className = 'hud-value' + (timeLeft <= 10 ? ' danger' : '');
+  const bar = document.getElementById('timer-bar');
+  const ratio = timeLeft / GAME_DURATION;
+  bar.style.width = (ratio * 100) + '%';
+  const r = Math.round(226 + (29 - 226) * ratio);
+  const g = Math.round(75 + (158 - 75) * ratio);
+  const b = Math.round(74 + (117 - 74) * ratio);
+  bar.style.background = `rgb(${r},${g},${b})`;
+}
+
+function showCombo(text) {
+  const el = document.getElementById('combo-text');
+  el.textContent = text;
+  el.style.opacity = '1';
+  clearTimeout(comboTimeout);
+  comboTimeout = setTimeout(() => el.style.opacity = '0', 900);
+}
+
+// ── GAME LOOP ─────────────────────────────────────────────────────────────────
+function gameLoop(ts) {
+  if (!gameActive) return;
+  const dt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+
+  // Spawn
+  spawnTimer += dt;
+  const elapsed = GAME_DURATION - timeLeft;
+  const interval = Math.max(0.42, 1.1 - elapsed * 0.022);
+  if (spawnTimer >= interval) { spawnItem(); spawnTimer = 0; }
+
+  // Update
+  for (let i = items.length - 1; i >= 0; i--) {
+    items[i].update(dt);
+    if (items[i].isDead() || items[i].offScreen()) {
+      if (items[i].offScreen() && !items[i].bad && !items[i].dying) combo = 0;
+      items.splice(i, 1);
+    }
+  }
+  for (let i = particles.length - 1; i >= 0; i--) {
+    particles[i].update(dt);
+    if (particles[i].isDead()) particles.splice(i, 1);
+  }
+  for (let i = floatTexts.length - 1; i >= 0; i--) {
+    floatTexts[i].update();
+    if (floatTexts[i].isDead()) floatTexts.splice(i, 1);
+  }
+
+  checkCollisions();
+
+  // Draw
+  drawBg();
+  items.forEach(it => it.draw());
+  particles.forEach(p => p.draw());
+  floatTexts.forEach(ft => ft.draw());
+  drawCursor();
+
+  // Speed warning
+  const warn = document.getElementById('speed-warn');
+  warn.style.opacity = timeLeft <= 10 ? (0.5 + 0.5 * Math.sin(Date.now() / 150)).toFixed(2) : '0';
+
+  requestAnimationFrame(gameLoop);
+}
+
+// ── GAME FLOW ─────────────────────────────────────────────────────────────────
+function startGame() {
+  playerName = document.getElementById('input-name').value.trim() || 'Anonymous';
+  playerFirm = document.getElementById('input-firm').value.trim() || '—';
+
+  items = []; particles = []; floatTexts = [];
+  score = 0; caught = 0; exceptionsHit = 0; combo = 0; maxCombo = 0;
+  timeLeft = GAME_DURATION; spawnTimer = 0;
+
+  showScreen(null);
+  document.getElementById('hud').style.display = 'flex';
+  document.getElementById('timer-bar-wrap').style.display = 'block';
+  updateHUD();
+
+  gameActive = true;
+  lastTime = performance.now();
+  requestAnimationFrame(gameLoop);
+
+  timerInterval = setInterval(() => {
+    timeLeft--;
+    updateHUD();
+    if (timeLeft <= 0) endGame();
+  }, 1000);
+}
+
+function endGame() {
+  gameActive = false;
+  clearInterval(timerInterval);
+  document.getElementById('hud').style.display = 'none';
+  document.getElementById('timer-bar-wrap').style.display = 'none';
+  document.getElementById('speed-warn').style.opacity = '0';
+
+  document.getElementById('res-score').textContent = score;
+  document.getElementById('res-caught').textContent = caught;
+  document.getElementById('res-exc').textContent = exceptionsHit;
+  document.getElementById('res-combo').textContent = maxCombo + 'x';
+
+  showScreen('screen-result');
+  saveScore();
+}
+
+// ── SHEETS INTEGRATION ────────────────────────────────────────────────────────
+function saveScore() {
+  fetch(SHEETS_URL, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: playerName, firm: playerFirm,
+      score, caught, combo: maxCombo
+    })
+  }).catch(() => {});
+}
+
+async function loadLeaderboard() {
+  const el = document.getElementById('lb-content');
+  el.innerHTML = '<p class="loading-text">Loading scores...</p>';
+  try {
+    const res = await fetch(SHEETS_URL + '?t=' + Date.now());
+    const data = await res.json();
+    data.sort((a, b) => b.score - a.score);
+    const top = data.slice(0, 10);
+    if (top.length === 0) {
+      el.innerHTML = '<p class="loading-text">No scores yet — be the first to play!</p>';
+      return;
+    }
+    const rankIcons = ['🥇', '🥈', '🥉'];
+    const nameClasses = ['lb-name-1', 'lb-name-2', 'lb-name-3'];
+    const rowClasses = ['lb-row-1', 'lb-row-2', 'lb-row-3'];
+    let html = `<table class="lb-table"><thead><tr>
+      <th>Rank</th><th>Name</th><th>Firm</th>
+      <th>Score</th><th>Caught</th><th>Streak</th>
+    </tr></thead><tbody>`;
+    top.forEach((entry, i) => {
+      const rowClass = rowClasses[i] || (i % 2 === 0 ? 'lb-row-even' : '');
+      const nameClass = nameClasses[i] || '';
+      const rank = i < 3 ? rankIcons[i] : `#${i + 1}`;
+      html += `<tr class="${rowClass}">
+        <td style="font-size:${i<3?'20px':'14px'};text-align:center;">${rank}</td>
+        <td class="${nameClass}">${entry.name || '—'}</td>
+        <td style="color:rgba(255,255,255,0.45);font-size:13px;">${entry.firm || '—'}</td>
+        <td class="lb-score">${entry.score || 0}</td>
+        <td class="lb-caught">${entry.caught || 0}</td>
+        <td class="lb-combo">${entry.combo || 0}x</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = '<p class="loading-text">Could not load scores. Check your connection.</p>';
+  }
+}
+
+// ── SCREEN HELPERS ────────────────────────────────────────────────────────────
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+  if (id) document.getElementById(id).classList.remove('hidden');
+}
+
+function showRegister() { showScreen('screen-register'); }
+
+function showLeaderboard() {
+  showScreen('screen-leaderboard');
+  loadLeaderboard();
+}
+
+function showIntro() { showScreen('screen-intro'); }
+
+// ── INPUT ─────────────────────────────────────────────────────────────────────
+canvas.addEventListener('mousemove', e => { cursorX = e.clientX; cursorY = e.clientY; });
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  cursorX = e.touches[0].clientX;
+  cursorY = e.touches[0].clientY;
+}, { passive: false });
+canvas.addEventListener('touchstart', e => {
+  cursorX = e.touches[0].clientX;
+  cursorY = e.touches[0].clientY;
+});
+document.getElementById('input-name').addEventListener('keydown', e => {
+  if (e.key === 'Tab') { e.preventDefault(); document.getElementById('input-firm').focus(); }
+  if (e.key === 'Enter') startGame();
+});
+document.getElementById('input-firm').addEventListener('keydown', e => {
+  if (e.key === 'Enter') startGame();
+});
+
+// ── IDLE BACKGROUND LOOP ──────────────────────────────────────────────────────
+function idleLoop() {
+  if (gameActive) return;
+  drawBg();
+  requestAnimationFrame(idleLoop);
+}
+idleLoop();
+</script>
+</body>
+</html>
